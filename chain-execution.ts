@@ -44,11 +44,37 @@ import {
 	type ArtifactConfig,
 	type ArtifactPaths,
 	type Details,
+	type ExtensionConfig,
 	type SingleResult,
 	MAX_CONCURRENCY,
 	resolveChildMaxSubagentDepth,
 } from "./types.ts";
 import { resolveModelCandidate } from "./model-fallback.ts";
+
+/**
+ * Resolve model override for chain execution considering inheritCurrentModel config.
+ */
+function resolveChainInheritedModel(
+	config: ExtensionConfig | undefined,
+	ctx: ExtensionContext,
+	availableModels: ModelInfo[],
+	explicitModel: string | undefined,
+	agentModel: string | undefined,
+): string | undefined {
+	if (explicitModel) {
+		return resolveModelCandidate(explicitModel, availableModels, ctx.model?.provider);
+	}
+
+	if (config?.inheritCurrentModel && ctx.model) {
+		return `${ctx.model.provider}/${ctx.model.id}`;
+	}
+
+	if (agentModel) {
+		return resolveModelCandidate(agentModel, availableModels, ctx.model?.provider);
+	}
+
+	return undefined;
+}
 
 interface ChainExecutionDetailsInput {
 	results: SingleResult[];
@@ -88,6 +114,7 @@ interface ParallelChainRunInput {
 	totalSteps: number;
 	worktreeSetup?: WorktreeSetup;
 	maxSubagentDepth: number;
+	config?: ExtensionConfig;
 }
 
 function buildChainExecutionDetails(input: ChainExecutionDetailsInput): Details {
@@ -174,9 +201,13 @@ async function runParallelChainTasks(input: ParallelChainRunInput): Promise<Sing
 			taskStr = prefix + taskStr + suffix;
 
 			const taskAgentConfig = input.agents.find((agent) => agent.name === task.agent);
-			const effectiveModel =
-				(task.model ? resolveModelCandidate(task.model, input.availableModels, input.ctx.model?.provider) : null)
-				?? resolveModelCandidate(taskAgentConfig?.model, input.availableModels, input.ctx.model?.provider);
+			const effectiveModel = resolveChainInheritedModel(
+				input.config,
+				input.ctx,
+				input.availableModels,
+				task.model,
+				taskAgentConfig?.model,
+			);
 			const maxSubagentDepth = resolveChildMaxSubagentDepth(input.maxSubagentDepth, taskAgentConfig?.maxSubagentDepth);
 
 			const taskCwd = input.worktreeSetup
@@ -254,6 +285,8 @@ export interface ChainExecutionParams {
 	maxSubagentDepth: number;
 	worktreeSetupHook?: string;
 	worktreeSetupHookTimeoutMs?: number;
+	/** Config for inheritCurrentModel and other settings */
+	config?: ExtensionConfig;
 }
 
 export interface ChainExecutionResult {
@@ -486,6 +519,7 @@ export async function executeChain(params: ChainExecutionParams): Promise<ChainE
 					totalSteps,
 					worktreeSetup,
 					maxSubagentDepth: params.maxSubagentDepth,
+					config: params.config,
 				});
 				globalTaskIndex += step.parallel.length;
 
@@ -596,8 +630,13 @@ export async function executeChain(params: ChainExecutionParams): Promise<ChainE
 
 			const effectiveModel =
 				tuiOverride?.model
-				?? (seqStep.model ? resolveModelCandidate(seqStep.model, availableModels, ctx.model?.provider) : null)
-				?? resolveModelCandidate(agentConfig.model, availableModels, ctx.model?.provider);
+				?? resolveChainInheritedModel(
+						params.config,
+						ctx,
+						availableModels,
+						seqStep.model,
+						agentConfig.model,
+					);
 
 			const outputPath = typeof behavior.output === "string"
 				? (path.isAbsolute(behavior.output) ? behavior.output : path.join(chainDir, behavior.output))

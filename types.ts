@@ -295,6 +295,8 @@ export interface ExtensionConfig {
 	worktreeSetupHook?: string;
 	worktreeSetupHookTimeoutMs?: number;
 	intercomBridge?: IntercomBridgeConfig;
+	/** Use the current session's model for all subagents (unless overridden) */
+	inheritCurrentModel?: boolean;
 }
 
 // ============================================================================

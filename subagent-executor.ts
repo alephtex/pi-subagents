@@ -54,6 +54,36 @@ import {
 	wrapForkTask,
 } from "./types.ts";
 
+/**
+ * Resolve model override considering inheritCurrentModel config.
+ * When inheritCurrentModel is true and no explicit model is provided,
+ * uses the current session's model instead of the agent's default.
+ */
+function resolveInheritedModel(
+	config: ExtensionConfig,
+	ctx: ExtensionContext,
+	availableModels: ModelInfo[],
+	explicitModel: string | undefined,
+	agentModel: string | undefined,
+): string | undefined {
+	// If an explicit model was provided, use it
+	if (explicitModel) {
+		return resolveModelCandidate(explicitModel, availableModels, ctx.model?.provider);
+	}
+
+	// If inheritCurrentModel is enabled and we have a current model, use it
+	if (config.inheritCurrentModel && ctx.model) {
+		return `${ctx.model.provider}/${ctx.model.id}`;
+	}
+
+	// Fall back to agent's default model
+	if (agentModel) {
+		return resolveModelCandidate(agentModel, availableModels, ctx.model?.provider);
+	}
+
+	return undefined;
+}
+
 interface TaskParam {
 	agent: string;
 	task: string;
@@ -399,7 +429,7 @@ function runAsyncPath(data: ExecutionContextData, deps: ExecutorDeps): AgentTool
 	if (hasTasks && params.tasks) {
 		const agentConfigs = params.tasks.map((task) => agents.find((agent) => agent.name === task.agent));
 		const modelOverrides = params.tasks.map((task, index) =>
-			resolveModelCandidate(task.model ?? agentConfigs[index]?.model, availableModels, currentProvider),
+			resolveInheritedModel(deps.config, ctx, availableModels, task.model, agentConfigs[index]?.model),
 		);
 		const skillOverrides = params.tasks.map((task) => normalizeSkillInput(task.skill));
 		const parallelTasks = params.tasks.map((task, index) => ({
@@ -469,7 +499,7 @@ function runAsyncPath(data: ExecutionContextData, deps: ExecutorDeps): AgentTool
 		const normalizedSkills = normalizeSkillInput(params.skill);
 		const skills = normalizedSkills === false ? [] : normalizedSkills;
 		const maxSubagentDepth = resolveChildMaxSubagentDepth(currentMaxSubagentDepth, a.maxSubagentDepth);
-		const modelOverride = resolveModelCandidate((params.model as string | undefined) ?? a.model, availableModels, currentProvider);
+		const modelOverride = resolveInheritedModel(deps.config, ctx, availableModels, params.model as string | undefined, a.model);
 		return executeAsyncSingle(id, {
 			agent: params.agent!,
 			task: params.context === "fork" ? wrapForkTask(params.task!) : params.task!,
@@ -536,6 +566,7 @@ async function runChainPath(data: ExecutionContextData, deps: ExecutorDeps): Pro
 		maxSubagentDepth: currentMaxSubagentDepth,
 		worktreeSetupHook: deps.config.worktreeSetupHook,
 		worktreeSetupHookTimeoutMs: deps.config.worktreeSetupHookTimeoutMs,
+		config: deps.config,
 	});
 
 	if (chainResult.requestedAsync) {
@@ -787,7 +818,7 @@ async function runParallelPath(data: ExecutionContextData, deps: ExecutorDeps): 
 	}));
 	let taskTexts = tasks.map((t) => t.task);
 	const modelOverrides: (string | undefined)[] = tasks.map((t, i) =>
-		resolveModelCandidate(t.model ?? agentConfigs[i]?.model, availableModels, currentProvider),
+		resolveInheritedModel(deps.config, ctx, availableModels, t.model, agentConfigs[i]?.model),
 	);
 	const skillOverrides: (string[] | false | undefined)[] = tasks.map((t) =>
 		normalizeSkillInput(t.skill),
@@ -991,10 +1022,12 @@ async function runSinglePath(data: ExecutionContextData, deps: ExecutorDeps): Pr
 		fullId: `${m.provider}/${m.id}`,
 	}));
 	let task = params.task!;
-	let modelOverride: string | undefined = resolveModelCandidate(
-		(params.model as string | undefined) ?? agentConfig.model,
+	let modelOverride: string | undefined = resolveInheritedModel(
+		deps.config,
+		ctx,
 		availableModels,
-		currentProvider,
+		params.model as string | undefined,
+		agentConfig.model,
 	);
 	let skillOverride: string[] | false | undefined = normalizeSkillInput(params.skill);
 	const rawOutput = params.output !== undefined ? params.output : agentConfig.output;
