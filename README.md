@@ -4,18 +4,6 @@
 
 <img src="https://storage.ko-fi.com/cdn/generated/fhfuc7slzawvi/2026-04-23_rest-162bec27f642a562eb8401eb0ceb3940-onjpojl8.jpg" alt="steimerbyte" style="border-radius: 8px; margin: 16px 0; max-width: 100%;"/>
 
-[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/steimerbyte)
-
-> ⭐ If you find this useful, consider [supporting me on Ko-fi](https://ko-fi.com/steimerbyte)!
-
-
-
-
-
-<p>
-  <img src="banner.png" alt="pi-subagents" width="1100">
-</p>
-
 # pi-subagents
 
 Pi extension for delegating tasks to subagents with chains, parallel execution, TUI clarification, and async support.
